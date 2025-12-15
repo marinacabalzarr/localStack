@@ -1,0 +1,123 @@
+service: crud-serverless-localstack
+frameworkVersion: '>=3'
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  stage: local
+  region: us-east-1
+
+  environment:
+    ITEMS_TABLE: items-table-local
+    SNS_TOPIC_ARN:
+      Fn::GetAtt:
+        - ItemsTopic
+        - TopicArn
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:Scan
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
+          Resource:
+            - arn:aws:dynamodb:us-east-1:000000000000:table/items-table-local
+
+        - Effect: Allow
+          Action:
+            - sns:Publish
+            - sns:Subscribe
+          Resource:
+            - Fn::GetAtt:
+                - ItemsTopic
+                - TopicArn
+
+plugins:
+  - serverless-localstack
+
+custom:
+  localstack:
+    stages:
+      - local
+    host: http://localhost
+    edgePort: 4566
+
+functions:
+  createItem:
+    handler: handler.createItem
+    events:
+      - http:
+          path: items
+          method: post
+
+  listItems:
+    handler: handler.listItems
+    events:
+      - http:
+          path: items
+          method: get
+
+  getItem:
+    handler: handler.getItem
+    events:
+      - http:
+          path: items/{id}
+          method: get
+
+  updateItem:
+    handler: handler.updateItem
+    events:
+      - http:
+          path: items/{id}
+          method: put
+
+  deleteItem:
+    handler: handler.deleteItem
+    events:
+      - http:
+          path: items/{id}
+          method: delete
+
+  subscribeEmail:
+    handler: handler.subscribeEmail
+    events:
+      - http:
+          path: subscribe
+          method: post
+
+  processNotification:
+    handler: handler.processNotification
+    events:
+      - sns:
+          arn:
+            Fn::GetAtt:
+              - ItemsTopic
+              - TopicArn
+          topicName: items-updates-topic
+
+
+
+resources:
+  Resources:
+    ItemsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: items-table-local
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    ItemsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: items-updates-topic
